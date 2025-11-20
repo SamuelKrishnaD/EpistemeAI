@@ -2,24 +2,24 @@
 
 @layer components {
   .sidebar-container {
-    h1 {
-      font-size: 32px;
-      font-weight: 600;
-    }
-
     p {
       font-size: 15px;
       color: gray;
     }
     & .sidebar-content {
       & .sidebar-link {
-        @apply flex flex-row space-x-[10px] text-black;
+        @apply flex flex-row space-x-[10px] text-black px-[8px] py-[4px] me-[12px];
 
         a {
           color: black;
           font-weight: 400;
           font-size: 16px;
         }
+      }
+
+      & .sidebar-link:hover {
+        background-color: lightgray;
+        border-radius: 8px;
       }
     }
   }
