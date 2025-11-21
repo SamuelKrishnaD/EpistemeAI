@@ -5,21 +5,52 @@ export default function AIGenerator() {
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // [NEW] State untuk menyimpan URL PDF yang sudah jadi
+  // URL PDF yang sudah jadi
   const [pdfUrl, setPdfUrl] = useState(null);
+
+  // 🔹 state untuk file upload
+  const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState("");
 
   const N8N_WEBHOOK_URL =
     "https://vin1123.app.n8n.cloud/webhook-test/generate_materi";
 
-  // [NEW] Reset PDF jika user mengubah input teks (biar tidak download materi lama)
+  // Reset PDF kalau input teks berubah (supaya tidak download materi lama)
   useEffect(() => {
     if (pdfUrl) {
-      window.URL.revokeObjectURL(pdfUrl); // Bersihkan memori
-      setPdfUrl(null); // Hilangkan tombol download
+      window.URL.revokeObjectURL(pdfUrl); // bersihkan memori blob lama
+      setPdfUrl(null); // sembunyikan tombol download
     }
   }, [input]);
 
-  // Handler Text (Sama seperti sebelumnya)
+  // 🔹 handle pilih file (pdf / ppt / pptx)
+  const handleFileChange = (e) => {
+    const selected = e.target.files?.[0];
+    if (!selected) {
+      setFile(null);
+      setFileName("");
+      return;
+    }
+
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ];
+
+    if (!allowedTypes.includes(selected.type)) {
+      alert("Please upload a PDF or PowerPoint file (.pdf, .ppt, .pptx).");
+      e.target.value = "";
+      setFile(null);
+      setFileName("");
+      return;
+    }
+
+    setFile(selected);
+    setFileName(selected.name);
+  };
+
+  // TEXT → n8n (summary / questions)
   const callN8NText = async (type, text) => {
     try {
       const response = await fetch(N8N_WEBHOOK_URL, {
@@ -36,23 +67,28 @@ export default function AIGenerator() {
     }
   };
 
-  // [UPDATED] Fungsi ini sekarang hanya MENYIAPKAN file, tidak auto-download
+  // TEXT (+ optional FILE) → PDF
   const preparePDF = async (text) => {
     try {
+      const formData = new FormData();
+      formData.append("topic", text);
+      formData.append("request_type", "pdf");
+
+      // 🔹 kalau ada file, kirim juga ke n8n
+      if (file) {
+        formData.append("file", file);
+      }
+
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: text, request_type: "pdf" }),
+        // ❗ jangan set Content-Type, biarkan browser set boundary untuk multipart
+        body: formData,
       });
 
       if (!response.ok) throw new Error("Gagal generate PDF");
 
       const blob = await response.blob();
-
-      // Buat URL objek dari blob
       const url = window.URL.createObjectURL(blob);
-
-      // [UPDATED] Simpan ke state, jangan di-klik otomatis
       setPdfUrl(url);
 
       return true;
@@ -69,7 +105,6 @@ export default function AIGenerator() {
     setLoading(true);
 
     if (type === "pdf_prepare") {
-      // Panggil persiapan PDF
       await preparePDF(input);
     } else {
       const result = await callN8NText(type, input);
@@ -81,13 +116,11 @@ export default function AIGenerator() {
 
   return (
     <div className="space-y-6">
-      {/* Header & Cards (Sama seperti sebelumnya) */}
+      {/* Header */}
       <div>
         <h1 className="text-4xl font-bold mb-2">AI Generator</h1>
-        <p className="text-gray-600">Generate study materials & PDF.</p>
+        <p className="text-gray-600">Generate study materials, Q&A, and PDF.</p>
       </div>
-
-      {/* ... (Bagian Cards Grid boleh tetap ada di sini) ... */}
 
       {/* --- INPUT AREA --- */}
       <div className="p-6 bg-white shadow rounded-xl space-y-4">
@@ -95,6 +128,30 @@ export default function AIGenerator() {
           <h2 className="text-xl font-semibold">Generate Content</h2>
         </div>
 
+        {/* 🔹 File upload */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">
+            Upload PDF / PPT (optional)
+          </label>
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <input
+              type="file"
+              accept=".pdf,.ppt,.pptx"
+              onChange={handleFileChange}
+              className="block text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+            />
+            {fileName && (
+              <span className="text-xs text-gray-500 break-all">
+                Selected: {fileName}
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-400">
+            You can combine uploaded file + topic text if you want.
+          </p>
+        </div>
+
+        {/* Textarea */}
         <textarea
           className="w-full min-h-[150px] border-[1.5px] border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           placeholder="Example: Sistem Pernapasan Manusia"
@@ -102,8 +159,9 @@ export default function AIGenerator() {
           onChange={(e) => setInput(e.target.value)}
         />
 
+        {/* Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
-          {/* Tombol Text Biasa */}
+          {/* Questions */}
           <button
             onClick={() => handleGenerate("questions")}
             disabled={loading}
@@ -112,6 +170,7 @@ export default function AIGenerator() {
             {loading ? "..." : "Questions"}
           </button>
 
+          {/* Summary */}
           <button
             onClick={() => handleGenerate("summary")}
             disabled={loading}
@@ -120,66 +179,31 @@ export default function AIGenerator() {
             {loading ? "..." : "Summary"}
           </button>
 
-          {/* --- TOMBOL PDF LOGIC --- */}
-          {/* KONDISI: Jika pdfUrl SUDAH ADA, tampilkan tombol DOWNLOAD HIJAU */}
+          {/* PDF: create / download */}
           {pdfUrl ? (
             <a
               href={pdfUrl}
               download={`Materi_${input.replace(/\s+/g, "_")}.pdf`}
               className="flex-1 px-4 py-2 rounded-lg bg-green-600 text-white font-bold hover:bg-green-700 text-center flex justify-center items-center gap-2 shadow-lg transform hover:scale-105 transition"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-5 h-5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
-                />
-              </svg>
-              <span>Save PDF</span>
+              Save PDF
             </a>
           ) : (
-            /* KONDISI: Jika pdfUrl BELUM ADA, tampilkan tombol GENERATE MERAH */
             <button
               onClick={() => handleGenerate("pdf_prepare")}
               disabled={loading}
               className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-60 flex justify-center items-center gap-2"
             >
-              {loading ? (
-                "Creating PDF..."
-              ) : (
-                <>
-                  <span>Create PDF</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                    className="w-5 h-5"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
-                    />
-                  </svg>
-                </>
-              )}
+              {loading ? "Creating PDF..." : "Create PDF"}
             </button>
           )}
         </div>
       </div>
 
+      {/* Output Text */}
       {output && (
         <div className="p-6 bg-white shadow rounded-xl border-t-4 border-blue-500">
-          <h2 className="text-lg font-semibold mb-3">Generated Summary:</h2>
+          <h2 className="text-lg font-semibold mb-3">Generated Output:</h2>
           <div className="bg-gray-50 p-4 rounded-lg text-sm whitespace-pre-wrap">
             {output}
           </div>
