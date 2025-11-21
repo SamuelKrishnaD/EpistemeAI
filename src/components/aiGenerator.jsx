@@ -177,7 +177,6 @@ export default function AIGenerator() {
         </div>
       </div>
 
-      {/* Output Text */}
       {output && (
         <div className="p-6 bg-white shadow rounded-xl border-t-4 border-blue-500">
           <h2 className="text-lg font-semibold mb-3">Generated Summary:</h2>
