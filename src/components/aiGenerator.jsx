@@ -102,8 +102,8 @@ export default function AIGenerator() {
     try {
       const response = await fetch(N8N_TEXT_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: text, request_type: "pdf" }),
+        // ❗ jangan set Content-Type, biarkan browser set boundary untuk multipart
+        body: formData,
       });
 
       if (!response.ok) throw new Error("Gagal generate PDF");
